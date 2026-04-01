@@ -6,6 +6,10 @@ Complete reference for available models and how to choose based on your device.
 
 | Model | Size | Weights | Speed* | Quality | RAM Needed | Best For |
 |-------|------|---------|--------|---------|-----------|----------|
+| DeepSeek R1 Distill Qwen 14B (Q4) | 9.0 GB | 14B | ⚡ | ⭐⭐⭐⭐⭐ | 10-12 GB | Deep reasoning, planning, chain-of-thought style tasks |
+| Qwen2.5 14B Instruct (Q4) | 8.8 GB | 14B | ⚡ | ⭐⭐⭐⭐⭐ | 10-12 GB | Best all-rounder: reasoning, coding, research |
+| Llama 3.1 8B Instruct (Q4) | 4.9 GB | 8B | ⚡⚡ | ⭐⭐⭐⭐ | 7 GB | Stable general assistant and instruction following |
+| Qwen2.5 Coder 7B Instruct (Q4) | 4.6 GB | 7B | ⚡⚡ | ⭐⭐⭐⭐ | 6-7 GB | Code generation, refactoring, agent tools |
 | TinyLlama 1.1B | 1.1 GB | 1.1B | ⚡⚡⚡ | ⭐⭐ | 2 GB | Budget devices, quick responses |
 | Mistral 7B (Q4) | 4.5 GB | 7B | ⚡⚡ | ⭐⭐⭐⭐ | 6 GB | Balanced speed/quality |
 | Llama2 7B (Q4) | 4.3 GB | 7B | ⚡⚡ | ⭐⭐⭐⭐ | 6 GB | Safe, stable chat |
@@ -34,6 +38,17 @@ Complete reference for available models and how to choose based on your device.
 ✅ **All models** — All models run well  
 ✅ **Mistral 7B Q5** — Go for this for best results
 ✅ **Multiple models** — Keep several installed
+✅ **DeepSeek R1 Distill Qwen 14B (Q4)** — Best thinking-focused pick under 10 GB
+✅ **Qwen2.5 14B Instruct (Q4)** — Best multi-capability pick under 10 GB
+
+## Best Under 10 GB (Thinking + Multi-Capability)
+
+If your target is maximum capability while staying under 10 GB per model, use this order:
+
+1. **DeepSeek R1 Distill Qwen 14B (Q4)** - best for reasoning-heavy tasks.
+2. **Qwen2.5 14B Instruct (Q4)** - best all-round model for research, coding, and planning.
+3. **Llama 3.1 8B Instruct (Q4)** - strong balance for daily use.
+4. **Qwen2.5 Coder 7B Instruct (Q4)** - best code-focused model in the lightweight tier.
 
 ## Model Details
 

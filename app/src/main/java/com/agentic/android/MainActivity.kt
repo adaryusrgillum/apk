@@ -1,6 +1,9 @@
 package com.agentic.android
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -45,11 +48,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -118,6 +123,7 @@ private fun AgentHomeScreen(
         ) {
             HeroCard()
             CapabilityRow()
+            AgentActionsPanel()
             LocalModelsPanel(localModelManager, modelDownloader)
             OllamaPanel(localInferenceEngine)
             BrowserPanel()
@@ -260,6 +266,115 @@ private fun BrowserPanel() {
 }
 
 @Composable
+private fun AgentActionsPanel() {
+    val context = LocalContext.current
+    var status by remember { mutableStateOf("Ready. Actions always require user-visible confirmation.") }
+
+    Card(shape = RoundedCornerShape(24.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Agent Action Hub", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "High-capability automations using secure Android intents (no hidden background control).",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = {
+                    status = launchSafeIntent(
+                        context,
+                        Intent(Intent.ACTION_VIEW).apply {
+                            data = Uri.parse("https://www.linkedin.com/jobs")
+                        },
+                        "Opening job applications"
+                    )
+                }) {
+                    Text("Apply to Jobs")
+                }
+
+                Button(onClick = {
+                    status = launchSafeIntent(
+                        context,
+                        Intent(Intent.ACTION_SENDTO).apply {
+                            data = Uri.parse("mailto:")
+                            putExtra(Intent.EXTRA_SUBJECT, "Application from Agentic Android")
+                            putExtra(Intent.EXTRA_TEXT, "Hi, I am interested in this role. Please find my resume attached.")
+                        },
+                        "Opening email composer"
+                    )
+                }) {
+                    Text("Email")
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = {
+                    status = launchSafeIntent(
+                        context,
+                        Intent(Intent.ACTION_SENDTO).apply {
+                            data = Uri.parse("smsto:")
+                            putExtra("sms_body", "Hi - sharing an update from Agentic Android.")
+                        },
+                        "Opening SMS composer"
+                    )
+                }) {
+                    Text("Text")
+                }
+
+                Button(onClick = {
+                    status = launchSafeIntent(
+                        context,
+                        Intent(Intent.ACTION_VIEW).apply {
+                            data = Uri.parse("https://www.snapchat.com")
+                        },
+                        "Opening Snapchat web"
+                    )
+                }) {
+                    Text("Snapchat")
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = {
+                    val pkg = context.packageManager.getLaunchIntentForPackage("com.google.android.gm")
+                    status = if (pkg != null) {
+                        launchSafeIntent(context, pkg, "Opening Gmail app")
+                    } else {
+                        "Gmail not installed"
+                    }
+                }) {
+                    Text("Open Gmail")
+                }
+
+                Button(onClick = {
+                    val pkg = context.packageManager.getLaunchIntentForPackage("com.snapchat.android")
+                    status = if (pkg != null) {
+                        launchSafeIntent(context, pkg, "Opening Snapchat app")
+                    } else {
+                        "Snapchat app not installed"
+                    }
+                }) {
+                    Text("Open Snapchat")
+                }
+            }
+
+            Text(status, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+private fun launchSafeIntent(context: android.content.Context, intent: Intent, successStatus: String): String {
+    return try {
+        context.startActivity(Intent.createChooser(intent, "Choose app"))
+        successStatus
+    } catch (_: ActivityNotFoundException) {
+        "No compatible app found"
+    }
+}
+
+@Composable
 private fun LocalModelsPanel(
     localModelManager: LocalModelManager,
     modelDownloader: ModelDownloader
@@ -271,17 +386,15 @@ private fun LocalModelsPanel(
     var downloadingModel by remember { mutableStateOf<String?>(null) }
     var downloadProgress by remember { mutableStateOf(0) }
     var showAvailableModels by remember { mutableStateOf(false) }
+    var starterPackStatus by remember { mutableStateOf<String?>(null) }
 
-    // Refresh local models on first load
-    remember {
-        scope.launch {
-            withContext(Dispatchers.IO) {
-                localModels = localModelManager.listLocalModels()
-                totalStorageUsed = localModelManager.getTotalStorageUsed()
-                availableStorage = localModelManager.getAvailableStorage()
-            }
+    // Refresh local models on first composition.
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            localModels = localModelManager.listLocalModels()
+            totalStorageUsed = localModelManager.getTotalStorageUsed()
+            availableStorage = localModelManager.getAvailableStorage()
         }
-        Unit
     }
 
     Card(shape = RoundedCornerShape(24.dp)) {
@@ -350,6 +463,48 @@ private fun LocalModelsPanel(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (showAvailableModels) "Hide Available Models" else "Show Available Models")
+            }
+
+            Button(
+                onClick = {
+                    if (downloadingModel != null) {
+                        return@Button
+                    }
+
+                    val starterPack = listOf(
+                        QuantizedModelRegistry.getModelByName("tinyllama-1b-q8.gguf"),
+                        QuantizedModelRegistry.getModelByName("llama-3.1-8b-instruct-q4.gguf")
+                    ).filterNotNull()
+
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            starterPackStatus = "Starting offline starter pack download (2 models)..."
+                            starterPack.forEach { modelInfo ->
+                                downloadingModel = modelInfo.name
+                                modelDownloader.downloadModel(
+                                    url = modelInfo.url,
+                                    modelName = modelInfo.name
+                                ).collectLatest { progress ->
+                                    downloadProgress = progress.percentComplete
+                                    starterPackStatus = "${modelInfo.displayName}: ${progress.status}"
+                                }
+                            }
+                            localModels = localModelManager.listLocalModels()
+                            totalStorageUsed = localModelManager.getTotalStorageUsed()
+                            availableStorage = localModelManager.getAvailableStorage()
+                            downloadingModel = null
+                            starterPackStatus = "Offline starter pack complete."
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = downloadingModel == null
+            ) {
+                Text("Download Offline Starter Pack (2 GGUF)")
+            }
+
+            if (!starterPackStatus.isNullOrBlank()) {
+                Text(starterPackStatus.orEmpty(), style = MaterialTheme.typography.bodySmall)
             }
 
             if (showAvailableModels) {

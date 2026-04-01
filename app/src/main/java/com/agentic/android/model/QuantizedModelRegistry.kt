@@ -18,6 +18,38 @@ object QuantizedModelRegistry {
 
     val availableModels = listOf(
         ModelInfo(
+            name = "deepseek-r1-distill-qwen-14b-q4.gguf",
+            displayName = "DeepSeek R1 Distill Qwen 14B (Q4)",
+            url = "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+            size = "9.0 GB",
+            supportedTasks = listOf("reasoning", "chat", "analysis", "planning"),
+            description = "Top reasoning-focused model under 10 GB. Strong for long, structured thinking."
+        ),
+        ModelInfo(
+            name = "qwen2.5-14b-instruct-q4.gguf",
+            displayName = "Qwen2.5 14B Instruct (Q4)",
+            url = "https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf",
+            size = "8.8 GB",
+            supportedTasks = listOf("reasoning", "chat", "coding", "tool-use"),
+            description = "High-quality all-rounder for reasoning, coding, and instruction-heavy tasks."
+        ),
+        ModelInfo(
+            name = "llama-3.1-8b-instruct-q4.gguf",
+            displayName = "Llama 3.1 8B Instruct (Q4)",
+            url = "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+            size = "4.9 GB",
+            supportedTasks = listOf("chat", "reasoning", "general"),
+            description = "Modern 8B instruct model with strong general capability and stable responses."
+        ),
+        ModelInfo(
+            name = "qwen2.5-coder-7b-instruct-q4.gguf",
+            displayName = "Qwen2.5 Coder 7B Instruct (Q4)",
+            url = "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+            size = "4.6 GB",
+            supportedTasks = listOf("coding", "reasoning", "analysis"),
+            description = "Best coding-focused GGUF in this size class with strong tool-oriented outputs."
+        ),
+        ModelInfo(
             name = "mistral-7b-instruct-q4.gguf",
             displayName = "Mistral 7B Instruct (Q4)",
             url = "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/Mistral-7B-Instruct-v0.2-Q4_K_M.gguf",
@@ -67,6 +99,17 @@ object QuantizedModelRegistry {
 
     fun getPopularModels(): List<ModelInfo> {
         return availableModels.take(3)
+    }
+
+    fun getTopThinkingAndMultiTaskModels(maxSizeGb: Int = 10): List<ModelInfo> {
+        return availableModels.filter {
+            val sizeGb = it.size.split(" ")[0].toFloatOrNull() ?: 0f
+            sizeGb <= maxSizeGb && (
+                "reasoning" in it.supportedTasks ||
+                "analysis" in it.supportedTasks ||
+                "coding" in it.supportedTasks
+            )
+        }
     }
 
     fun getModelsBySize(maxSizeGb: Int): List<ModelInfo> {

@@ -61,6 +61,7 @@ import com.agentic.android.model.ModelDownloader
 import com.agentic.android.ollama.OllamaClient
 import com.agentic.android.ollama.OllamaMessage
 import com.agentic.android.ui.theme.AgenticAndroidTheme
+import com.agentic.android.inference.LocalInferenceEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -74,7 +75,8 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val localModelManager = remember { LocalModelManager(this@MainActivity) }
                     val modelDownloader = remember { ModelDownloader(localModelManager) }
-                    AgentHomeScreen(localModelManager, modelDownloader)
+                    val localInferenceEngine = remember { LocalInferenceEngine(this@MainActivity, localModelManager) }
+                    AgentHomeScreen(localModelManager, modelDownloader, localInferenceEngine)
                 }
             }
         }
@@ -85,7 +87,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AgentHomeScreen(
     localModelManager: LocalModelManager,
-    modelDownloader: ModelDownloader
+    modelDownloader: ModelDownloader,
+    localInferenceEngine: LocalInferenceEngine
 ) {
     Scaffold(
         topBar = {
@@ -115,7 +118,7 @@ private fun AgentHomeScreen(
             HeroCard()
             CapabilityRow()
             LocalModelsPanel(localModelManager, modelDownloader)
-            OllamaPanel()
+            OllamaPanel(localInferenceEngine)
             BrowserPanel()
         }
     }
@@ -359,8 +362,8 @@ private fun LocalModelsPanel(
 }
 
 @Composable
-private fun OllamaPanel() {
-    val ollamaClient = remember { OllamaClient() }
+private fun OllamaPanel(localInferenceEngine: LocalInferenceEngine) {
+    val ollamaClient = remember { OllamaClient(localInferenceEngine) }
     val scope = rememberCoroutineScope()
 
     var endpoint by remember { mutableStateOf("10.0.2.2:11434") }
@@ -369,6 +372,7 @@ private fun OllamaPanel() {
     var showModelPresets by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var pullingModel by remember { mutableStateOf(false) }
+    var isLocalModel by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var modelStatus by remember { mutableStateOf<String?>(null) }
     var installedModels by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -545,6 +549,7 @@ private fun OllamaPanel() {
                         }
 
                         errorMessage = null
+                        isLocalModel = localInferenceEngine.isModelAvailable(model)
                         val priorMessages = messages
                         val nextMessages = priorMessages + UiMessage("user", trimmedPrompt)
                         messages = nextMessages
@@ -561,11 +566,11 @@ private fun OllamaPanel() {
                             }
 
                             result
-                                .onSuccess { reply ->
-                                    messages = messages + UiMessage("assistant", reply)
+                                .onSuccess { response ->
+                                    messages = messages + UiMessage("assistant", response.text)
                                 }
                                 .onFailure { err ->
-                                    errorMessage = err.message ?: "Unknown Ollama error"
+                                    errorMessage = err.message ?: "Unknown inference error"
                                 }
 
                             loading = false
@@ -573,7 +578,7 @@ private fun OllamaPanel() {
                     },
                     enabled = !loading
                 ) {
-                    Text(if (loading) "Sending..." else "Send to Ollama")
+                    Text(if (loading) "Inferencing..." else "Send to Model")
                 }
 
                 IconButton(onClick = {
@@ -591,6 +596,12 @@ private fun OllamaPanel() {
             if (pullingModel) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
+
+            Text(
+                text = "Model source: ${if (isLocalModel) "📱 Phone (Local)" else "☁️ Remote Ollama"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isLocalModel) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.secondary
+            )
 
             if (!errorMessage.isNullOrBlank()) {
                 Text(

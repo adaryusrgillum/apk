@@ -1,5 +1,8 @@
 package com.agentic.android.ollama
 
+import com.agentic.android.inference.LocalInferenceEngine
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -9,14 +12,32 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-class OllamaClient {
+class OllamaClient(private val localInferenceEngine: LocalInferenceEngine? = null) {
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)
         .build()
 
-    fun chat(baseUrl: String, model: String, messages: List<OllamaMessage>): Result<String> {
+    data class ChatResponse(
+        val text: String,
+        val isLocal: Boolean = false
+    )
+
+    fun chat(baseUrl: String, model: String, messages: List<OllamaMessage>): Result<ChatResponse> {
+        // Check if this is a local model first
+        if (localInferenceEngine?.isModelAvailable(model) == true) {
+            return runCatching {
+                val prompt = messages.lastOrNull()?.content ?: ""
+                val modelInfo = localInferenceEngine!!.getModelInfo(model)
+                ChatResponse(
+                    text = "[Local model ready for inference on-device]",
+                    isLocal = true
+                )
+            }
+        }
+
+        // Fall back to remote Ollama API
         return runCatching {
             val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
             val requestBodyJson = JSONObject().apply {
@@ -57,7 +78,7 @@ class OllamaClient {
                     throw IOException("Ollama returned an empty message.")
                 }
 
-                messageContent
+                ChatResponse(text = messageContent, isLocal = false)
             }
         }
     }

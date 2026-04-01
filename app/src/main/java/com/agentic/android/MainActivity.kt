@@ -23,12 +23,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -52,10 +56,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.agentic.android.model.LocalModelManager
+import com.agentic.android.model.ModelDownloader
 import com.agentic.android.ollama.OllamaClient
 import com.agentic.android.ollama.OllamaMessage
 import com.agentic.android.ui.theme.AgenticAndroidTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -65,7 +72,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             AgenticAndroidTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    AgentHomeScreen()
+                    val localModelManager = remember { LocalModelManager(this@MainActivity) }
+                    val modelDownloader = remember { ModelDownloader(localModelManager) }
+                    AgentHomeScreen(localModelManager, modelDownloader)
                 }
             }
         }
@@ -74,7 +83,10 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AgentHomeScreen() {
+private fun AgentHomeScreen(
+    localModelManager: LocalModelManager,
+    modelDownloader: ModelDownloader
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -102,6 +114,7 @@ private fun AgentHomeScreen() {
         ) {
             HeroCard()
             CapabilityRow()
+            LocalModelsPanel(localModelManager, modelDownloader)
             OllamaPanel()
             BrowserPanel()
         }
@@ -243,6 +256,109 @@ private fun BrowserPanel() {
 }
 
 @Composable
+private fun LocalModelsPanel(
+    localModelManager: LocalModelManager,
+    modelDownloader: ModelDownloader
+) {
+    val scope = rememberCoroutineScope()
+    var localModels by remember { mutableStateOf<List<String>>(emptyList()) }
+    var totalStorageUsed by remember { mutableStateOf(0L) }
+    var availableStorage by remember { mutableStateOf(0L) }
+    var downloadingModel by remember { mutableStateOf<String?>(null) }
+    var downloadProgress by remember { mutableStateOf(0) }
+
+    // Refresh local models on first load
+    remember {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                localModels = localModelManager.listLocalModels()
+                totalStorageUsed = localModelManager.getTotalStorageUsed()
+                availableStorage = localModelManager.getAvailableStorage()
+            }
+        }
+        Unit
+    }
+
+    Card(shape = RoundedCornerShape(24.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Outlined.Storage, contentDescription = null)
+                Text("Phone-Local Models", style = MaterialTheme.typography.titleMedium)
+            }
+
+            Text(
+                text = "Storage: ${localModelManager.formatSize(totalStorageUsed)} used / ${localModelManager.formatSize(availableStorage)} available",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            if (localModels.isEmpty()) {
+                Text(
+                    text = "No models downloaded yet. Use 'Download Model' in Ollama panel or add quantized models here.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    localModels.forEach { model ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
+                                .padding(10.dp)
+                        ) {
+                            Column {
+                                Text(model, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    localModelManager.formatSize(localModelManager.getModelSize(model)),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            localModelManager.deleteModel(model)
+                                            localModels = localModelManager.listLocalModels()
+                                            totalStorageUsed = localModelManager.getTotalStorageUsed()
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Outlined.Delete, contentDescription = "Delete")
+                            }
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider()
+
+            Button(
+                onClick = {
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            localModels = localModelManager.listLocalModels()
+                            totalStorageUsed = localModelManager.getTotalStorageUsed()
+                            availableStorage = localModelManager.getAvailableStorage()
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Refresh")
+            }
+        }
+    }
+}
+
+@Composable
 private fun OllamaPanel() {
     val ollamaClient = remember { OllamaClient() }
     val scope = rememberCoroutineScope()
@@ -250,6 +366,7 @@ private fun OllamaPanel() {
     var endpoint by remember { mutableStateOf("10.0.2.2:11434") }
     var model by remember { mutableStateOf("llama3.1:8b") }
     var prompt by remember { mutableStateOf("Research: summarize the top 3 Android agent architecture patterns.") }
+    var showModelPresets by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var pullingModel by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -292,6 +409,45 @@ private fun OllamaPanel() {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
+
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = { showModelPresets = !showModelPresets },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Popular models")
+                }
+
+                DropdownMenu(
+                    expanded = showModelPresets,
+                    onDismissRequest = { showModelPresets = false },
+                    modifier = Modifier.fillMaxWidth(0.9f)
+                ) {
+                    val presets = listOf(
+                        "mistral:7b" to "Fast, capable small model",
+                        "llama3.1:8b" to "Latest Llama 8B context",
+                        "llama2:7b" to "Llama 2 foundation model",
+                        "neural-chat:7b" to "Chat-optimized model",
+                        "dolphin-mixtral:8x7b" to "Very capable MoE model",
+                        "orca-mini:3b" to "Ultra-lightweight model"
+                    )
+
+                    presets.forEach { (modelId, description) ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(modelId, fontWeight = FontWeight.SemiBold)
+                                    Text(description, style = MaterialTheme.typography.bodySmall)
+                                }
+                            },
+                            onClick = {
+                                model = modelId
+                                showModelPresets = false
+                            }
+                        )
+                    }
+                }
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(

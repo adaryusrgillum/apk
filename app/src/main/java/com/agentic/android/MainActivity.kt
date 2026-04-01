@@ -61,13 +61,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.agentic.android.inference.LocalInferenceEngine
 import com.agentic.android.model.LocalModelManager
 import com.agentic.android.model.ModelDownloader
 import com.agentic.android.model.QuantizedModelRegistry
-import com.agentic.android.ollama.OllamaClient
-import com.agentic.android.ollama.OllamaMessage
 import com.agentic.android.ui.theme.AgenticAndroidTheme
-import com.agentic.android.inference.LocalInferenceEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -125,7 +123,7 @@ private fun AgentHomeScreen(
             CapabilityRow()
             AgentActionsPanel()
             LocalModelsPanel(localModelManager, modelDownloader)
-            OllamaPanel(localInferenceEngine)
+            LocalChatPanel(localInferenceEngine)
             BrowserPanel()
         }
     }
@@ -147,11 +145,11 @@ private fun HeroCard() {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Use the phone as the control surface. Run heavyweight inference and browser automation through a remote agent backend.",
+                text = "Use the phone as the control surface. Run local models on-device for research, browsing support, and long-running tasks.",
                 style = MaterialTheme.typography.bodyLarge
             )
             Text(
-                text = "Next implementation step: connect this shell to your model API, task queue, and authenticated browser workers.",
+                text = "This build is configured for local-first inference only, with phone-side model management and local chat execution.",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -167,7 +165,7 @@ private fun CapabilityRow() {
         CapabilityCard(
             modifier = Modifier.weight(1f),
             title = "Model",
-            detail = "Remote high-inference backend",
+            detail = "On-device local inference",
             icon = { Icon(Icons.Outlined.Storage, contentDescription = null) }
         )
         CapabilityCard(
@@ -233,7 +231,7 @@ private fun BrowserPanel() {
                 value = address,
                 onValueChange = { address = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("URL or worker endpoint") },
+                label = { Text("URL") },
                 singleLine = true
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -386,7 +384,6 @@ private fun LocalModelsPanel(
     var downloadingModel by remember { mutableStateOf<String?>(null) }
     var downloadProgress by remember { mutableStateOf(0) }
     var showAvailableModels by remember { mutableStateOf(false) }
-    var starterPackStatus by remember { mutableStateOf<String?>(null) }
 
     // Refresh local models on first composition.
     LaunchedEffect(Unit) {
@@ -417,7 +414,7 @@ private fun LocalModelsPanel(
 
             if (localModels.isEmpty()) {
                 Text(
-                    text = "No models downloaded yet. Use 'Download Model' in Ollama panel or add quantized models here.",
+                    text = "No models downloaded yet. Download a GGUF model below to enable fully local chat.",
                     style = MaterialTheme.typography.bodySmall
                 )
             } else {
@@ -465,8 +462,15 @@ private fun LocalModelsPanel(
                 Text(if (showAvailableModels) "Hide Available Models" else "Show Available Models")
             }
 
-            if (!starterPackStatus.isNullOrBlank()) {
-                Text(starterPackStatus.orEmpty(), style = MaterialTheme.typography.bodySmall)
+            if (downloadingModel != null) {
+                LinearProgressIndicator(
+                    progress = { downloadProgress / 100f },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "Downloading $downloadingModel ($downloadProgress%)",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
 
             if (showAvailableModels) {
@@ -561,26 +565,23 @@ private fun LocalModelsPanel(
 }
 
 @Composable
-private fun OllamaPanel(localInferenceEngine: LocalInferenceEngine) {
-    val ollamaClient = remember { OllamaClient(localInferenceEngine) }
+private fun LocalChatPanel(localInferenceEngine: LocalInferenceEngine) {
     val scope = rememberCoroutineScope()
 
-    var endpoint by remember { mutableStateOf("10.0.2.2:11434") }
-    var model by remember { mutableStateOf("llama3.1:8b") }
+    var downloadedModels by remember { mutableStateOf(localInferenceEngine.listAvailableLocalModels().map { it.first }) }
+    var model by remember { mutableStateOf(downloadedModels.firstOrNull().orEmpty()) }
     var prompt by remember { mutableStateOf("Research: summarize the top 3 Android agent architecture patterns.") }
     var showModelPresets by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
-    var pullingModel by remember { mutableStateOf(false) }
-    var isLocalModel by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var modelStatus by remember { mutableStateOf<String?>(null) }
-    var installedModels by remember { mutableStateOf<List<String>>(emptyList()) }
+    val deviceProfile = remember { localInferenceEngine.getDeviceRuntimeProfile() }
     var messages by remember {
         mutableStateOf(
             listOf(
                 UiMessage(
                     role = "assistant",
-                    content = "Ollama is not connected yet. Set endpoint/model, then send a prompt."
+                    content = "Local model console ready. Download a GGUF model, select it, and send a prompt."
                 )
             )
         )
@@ -591,24 +592,16 @@ private fun OllamaPanel(localInferenceEngine: LocalInferenceEngine) {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Ollama model console", style = MaterialTheme.typography.titleMedium)
+            Text("Local model console", style = MaterialTheme.typography.titleMedium)
             Text(
-                text = "Use http endpoint for emulator/desktop Ollama. Example endpoint: 10.0.2.2:11434",
+                text = deviceProfile.notes,
                 style = MaterialTheme.typography.bodySmall
-            )
-
-            OutlinedTextField(
-                value = endpoint,
-                onValueChange = { endpoint = it.trim() },
-                label = { Text("Ollama endpoint") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
             )
 
             OutlinedTextField(
                 value = model,
                 onValueChange = { model = it.trim() },
-                label = { Text("Model") },
+                label = { Text("Local model file") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -626,21 +619,12 @@ private fun OllamaPanel(localInferenceEngine: LocalInferenceEngine) {
                     onDismissRequest = { showModelPresets = false },
                     modifier = Modifier.fillMaxWidth(0.9f)
                 ) {
-                    val presets = listOf(
-                        "mistral:7b" to "Fast, capable small model",
-                        "llama3.1:8b" to "Latest Llama 8B context",
-                        "llama2:7b" to "Llama 2 foundation model",
-                        "neural-chat:7b" to "Chat-optimized model",
-                        "dolphin-mixtral:8x7b" to "Very capable MoE model",
-                        "orca-mini:3b" to "Ultra-lightweight model"
-                    )
-
-                    presets.forEach { (modelId, description) ->
+                    downloadedModels.forEach { modelId ->
                         DropdownMenuItem(
                             text = {
                                 Column {
                                     Text(modelId, fontWeight = FontWeight.SemiBold)
-                                    Text(description, style = MaterialTheme.typography.bodySmall)
+                                    Text("Downloaded and available on this device", style = MaterialTheme.typography.bodySmall)
                                 }
                             },
                             onClick = {
@@ -655,65 +639,19 @@ private fun OllamaPanel(localInferenceEngine: LocalInferenceEngine) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = {
-                        val selectedModel = model.trim()
-                        if (selectedModel.isEmpty() || pullingModel || loading) {
-                            return@Button
-                        }
-
-                        errorMessage = null
-                        modelStatus = "Downloading $selectedModel locally..."
-                        pullingModel = true
-
                         scope.launch {
-                            val pullResult = withContext(Dispatchers.IO) {
-                                ollamaClient.pullModel(endpoint, selectedModel)
+                            downloadedModels = withContext(Dispatchers.IO) {
+                                localInferenceEngine.listAvailableLocalModels().map { it.first }
                             }
-
-                            pullResult
-                                .onSuccess { status ->
-                                    modelStatus = "Local download complete: $status"
-
-                                    withContext(Dispatchers.IO) {
-                                        ollamaClient.listModels(endpoint)
-                                    }.onSuccess { models ->
-                                        installedModels = models
-                                    }
-                                }
-                                .onFailure { err ->
-                                    errorMessage = err.message ?: "Failed to download model"
-                                }
-
-                            pullingModel = false
+                            if (model.isBlank()) {
+                                model = downloadedModels.firstOrNull().orEmpty()
+                            }
+                            modelStatus = "Local models found: ${downloadedModels.size}"
                         }
                     },
-                    enabled = !pullingModel && !loading
+                    enabled = !loading
                 ) {
-                    Text(if (pullingModel) "Downloading..." else "Download Model")
-                }
-
-                Button(
-                    onClick = {
-                        if (pullingModel || loading) {
-                            return@Button
-                        }
-
-                        errorMessage = null
-                        scope.launch {
-                            withContext(Dispatchers.IO) {
-                                ollamaClient.listModels(endpoint)
-                            }
-                                .onSuccess { models ->
-                                    installedModels = models
-                                    modelStatus = "Installed local models: ${models.size}"
-                                }
-                                .onFailure { err ->
-                                    errorMessage = err.message ?: "Failed to read local models"
-                                }
-                        }
-                    },
-                    enabled = !pullingModel && !loading
-                ) {
-                    Text("Refresh Models")
+                    Text("Refresh Local Models")
                 }
             }
 
@@ -724,9 +662,9 @@ private fun OllamaPanel(localInferenceEngine: LocalInferenceEngine) {
                 )
             }
 
-            if (installedModels.isNotEmpty()) {
+            if (downloadedModels.isNotEmpty()) {
                 Text(
-                    text = "Local models: ${installedModels.joinToString()}",
+                    text = "Local models: ${downloadedModels.joinToString()}",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -748,7 +686,12 @@ private fun OllamaPanel(localInferenceEngine: LocalInferenceEngine) {
                         }
 
                         errorMessage = null
-                        isLocalModel = localInferenceEngine.isModelAvailable(model)
+                        val selectedModel = model.trim()
+                        if (!localInferenceEngine.isModelAvailable(selectedModel)) {
+                            errorMessage = "Selected model is not downloaded locally"
+                            return@Button
+                        }
+
                         val priorMessages = messages
                         val nextMessages = priorMessages + UiMessage("user", trimmedPrompt)
                         messages = nextMessages
@@ -756,17 +699,25 @@ private fun OllamaPanel(localInferenceEngine: LocalInferenceEngine) {
                         loading = true
 
                         scope.launch {
-                            val result = withContext(Dispatchers.IO) {
-                                ollamaClient.chat(
-                                    baseUrl = endpoint,
-                                    model = model,
-                                    messages = nextMessages.map { OllamaMessage(it.role, it.content) }
-                                )
+                            val result = runCatching {
+                                val modelPath = localInferenceEngine.getModelInfo(selectedModel)["path"]
+                                    ?: error("Missing local model path")
+
+                                withContext(Dispatchers.IO) {
+                                    localInferenceEngine.inferWithLocalModel(
+                                        modelPath = modelPath,
+                                        prompt = trimmedPrompt,
+                                        maxTokens = deviceProfile.defaultMaxTokens,
+                                        temperature = deviceProfile.defaultTemperature
+                                    )
+                                }
                             }
 
                             result
-                                .onSuccess { response ->
-                                    messages = messages + UiMessage("assistant", response.text)
+                                .onSuccess { inferenceFlow ->
+                                    inferenceFlow.collectLatest { response ->
+                                        messages = messages + UiMessage("assistant", response.text)
+                                    }
                                 }
                                 .onFailure { err ->
                                     errorMessage = err.message ?: "Unknown inference error"
@@ -792,14 +743,10 @@ private fun OllamaPanel(localInferenceEngine: LocalInferenceEngine) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
-            if (pullingModel) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-
             Text(
-                text = "Model source: ${if (isLocalModel) "📱 Phone (Local)" else "☁️ Remote Ollama"}",
+                text = "Model source: 📱 Phone (Local only)",
                 style = MaterialTheme.typography.bodySmall,
-                color = if (isLocalModel) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.secondary
+                color = MaterialTheme.colorScheme.tertiary
             )
 
             if (!errorMessage.isNullOrBlank()) {

@@ -23,7 +23,6 @@
         android:allowBackup="true"
         android:label="Agentic Android"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.AgenticAndroid">
         <activity
             android:name=".MainActivity"

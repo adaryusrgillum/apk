@@ -477,30 +477,63 @@ private fun LocalModelsPanel(
                     ).filterNotNull()
 
                     scope.launch {
-                        withContext(Dispatchers.IO) {
-                            starterPackStatus = "Starting offline starter pack download (2 models)..."
-                            starterPack.forEach { modelInfo ->
-                                downloadingModel = modelInfo.name
-                                modelDownloader.downloadModel(
-                                    url = modelInfo.url,
-                                    modelName = modelInfo.name
-                                ).collectLatest { progress ->
-                                    downloadProgress = progress.percentComplete
-                                    starterPackStatus = "${modelInfo.displayName}: ${progress.status}"
-                                }
-                            }
-                            localModels = localModelManager.listLocalModels()
-                            totalStorageUsed = localModelManager.getTotalStorageUsed()
-                            availableStorage = localModelManager.getAvailableStorage()
-                            downloadingModel = null
-                            starterPackStatus = "Offline starter pack complete."
-                        }
+                        downloadModelBatch(
+                            models = starterPack,
+                            initialStatus = "Starting offline starter pack download (2 models)...",
+                            completionStatus = "Offline starter pack complete.",
+                            onModelDownloading = { downloadingModel = it },
+                            onProgress = { percent, status ->
+                                downloadProgress = percent
+                                starterPackStatus = status
+                            },
+                            onRefresh = {
+                                localModels = localModelManager.listLocalModels()
+                                totalStorageUsed = localModelManager.getTotalStorageUsed()
+                                availableStorage = localModelManager.getAvailableStorage()
+                            },
+                            downloader = modelDownloader
+                        )
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = downloadingModel == null
             ) {
                 Text("Download Offline Starter Pack (2 GGUF)")
+            }
+
+            Button(
+                onClick = {
+                    if (downloadingModel != null) {
+                        return@Button
+                    }
+
+                    val topPack = QuantizedModelRegistry
+                        .getTopThinkingAndMultiTaskModels(maxSizeGb = 10)
+                        .take(4)
+
+                    scope.launch {
+                        downloadModelBatch(
+                            models = topPack,
+                            initialStatus = "Starting HF bulk download (top ${topPack.size} models)...",
+                            completionStatus = "HF bulk model download complete.",
+                            onModelDownloading = { downloadingModel = it },
+                            onProgress = { percent, status ->
+                                downloadProgress = percent
+                                starterPackStatus = status
+                            },
+                            onRefresh = {
+                                localModels = localModelManager.listLocalModels()
+                                totalStorageUsed = localModelManager.getTotalStorageUsed()
+                                availableStorage = localModelManager.getAvailableStorage()
+                            },
+                            downloader = modelDownloader
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = downloadingModel == null
+            ) {
+                Text("Download Top HF Thinking Pack (4 GGUF)")
             }
 
             if (!starterPackStatus.isNullOrBlank()) {
@@ -595,6 +628,33 @@ private fun LocalModelsPanel(
                 Text("Refresh")
             }
         }
+    }
+}
+
+private suspend fun downloadModelBatch(
+    models: List<QuantizedModelRegistry.ModelInfo>,
+    initialStatus: String,
+    completionStatus: String,
+    onModelDownloading: (String?) -> Unit,
+    onProgress: (Int, String) -> Unit,
+    onRefresh: suspend () -> Unit,
+    downloader: ModelDownloader
+) {
+    withContext(Dispatchers.IO) {
+        onProgress(0, initialStatus)
+        models.forEach { modelInfo ->
+            onModelDownloading(modelInfo.name)
+            downloader.downloadModel(
+                url = modelInfo.url,
+                modelName = modelInfo.name
+            ).collectLatest { progress ->
+                onProgress(progress.percentComplete, "${modelInfo.displayName}: ${progress.status}")
+            }
+        }
+
+        onRefresh()
+        onModelDownloading(null)
+        onProgress(100, completionStatus)
     }
 }
 

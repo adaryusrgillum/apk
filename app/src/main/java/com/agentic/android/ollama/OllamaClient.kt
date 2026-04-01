@@ -62,6 +62,65 @@ class OllamaClient {
         }
     }
 
+    fun pullModel(baseUrl: String, model: String): Result<String> {
+        return runCatching {
+            val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
+            val requestBodyJson = JSONObject().apply {
+                put("name", model)
+                put("stream", false)
+            }
+
+            val request = Request.Builder()
+                .url("${normalizedBaseUrl}api/pull")
+                .post(requestBodyJson.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                val bodyText = response.body?.string().orEmpty()
+
+                if (!response.isSuccessful) {
+                    throw IOException("Ollama pull error ${response.code}: $bodyText")
+                }
+
+                val root = JSONObject(bodyText)
+                val status = root.optString("status").trim()
+                if (status.isBlank()) {
+                    "Model pull finished"
+                } else {
+                    status
+                }
+            }
+        }
+    }
+
+    fun listModels(baseUrl: String): Result<List<String>> {
+        return runCatching {
+            val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
+            val request = Request.Builder()
+                .url("${normalizedBaseUrl}api/tags")
+                .get()
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                val bodyText = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IOException("Ollama tags error ${response.code}: $bodyText")
+                }
+
+                val root = JSONObject(bodyText)
+                val modelsArray = root.optJSONArray("models") ?: JSONArray()
+                buildList {
+                    for (i in 0 until modelsArray.length()) {
+                        val name = modelsArray.optJSONObject(i)?.optString("name")?.trim().orEmpty()
+                        if (name.isNotBlank()) {
+                            add(name)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private fun normalizeBaseUrl(baseUrl: String): String {
         val withProtocol = if (baseUrl.startsWith("http://") || baseUrl.startsWith("https://")) {
             baseUrl

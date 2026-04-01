@@ -41,7 +41,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -252,7 +251,10 @@ private fun OllamaPanel() {
     var model by remember { mutableStateOf("llama3.1:8b") }
     var prompt by remember { mutableStateOf("Research: summarize the top 3 Android agent architecture patterns.") }
     var loading by remember { mutableStateOf(false) }
+    var pullingModel by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var modelStatus by remember { mutableStateOf<String?>(null) }
+    var installedModels by remember { mutableStateOf<List<String>>(emptyList()) }
     var messages by remember {
         mutableStateOf(
             listOf(
@@ -290,6 +292,85 @@ private fun OllamaPanel() {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = {
+                        val selectedModel = model.trim()
+                        if (selectedModel.isEmpty() || pullingModel || loading) {
+                            return@Button
+                        }
+
+                        errorMessage = null
+                        modelStatus = "Downloading $selectedModel locally..."
+                        pullingModel = true
+
+                        scope.launch {
+                            val pullResult = withContext(Dispatchers.IO) {
+                                ollamaClient.pullModel(endpoint, selectedModel)
+                            }
+
+                            pullResult
+                                .onSuccess { status ->
+                                    modelStatus = "Local download complete: $status"
+
+                                    withContext(Dispatchers.IO) {
+                                        ollamaClient.listModels(endpoint)
+                                    }.onSuccess { models ->
+                                        installedModels = models
+                                    }
+                                }
+                                .onFailure { err ->
+                                    errorMessage = err.message ?: "Failed to download model"
+                                }
+
+                            pullingModel = false
+                        }
+                    },
+                    enabled = !pullingModel && !loading
+                ) {
+                    Text(if (pullingModel) "Downloading..." else "Download Model")
+                }
+
+                Button(
+                    onClick = {
+                        if (pullingModel || loading) {
+                            return@Button
+                        }
+
+                        errorMessage = null
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                ollamaClient.listModels(endpoint)
+                            }
+                                .onSuccess { models ->
+                                    installedModels = models
+                                    modelStatus = "Installed local models: ${models.size}"
+                                }
+                                .onFailure { err ->
+                                    errorMessage = err.message ?: "Failed to read local models"
+                                }
+                        }
+                    },
+                    enabled = !pullingModel && !loading
+                ) {
+                    Text("Refresh Models")
+                }
+            }
+
+            if (!modelStatus.isNullOrBlank()) {
+                Text(
+                    text = modelStatus.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            if (installedModels.isNotEmpty()) {
+                Text(
+                    text = "Local models: ${installedModels.joinToString()}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
 
             OutlinedTextField(
                 value = prompt,
@@ -348,6 +429,10 @@ private fun OllamaPanel() {
             }
 
             if (loading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+
+            if (pullingModel) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
